@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Monitoreo de Cumplimiento SMV · Demo</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  :root{
+    --navy:#0B1F3A;
+    --navy-2:#132A4F;
+    --azure:#0078D4;
+    --azure-light:#3FA9F5;
+    --ice:#EAF3FC;
+    --bg:#F4F6FA;
+    --card:#FFFFFF;
+    --text:#1B2430;
+    --muted:#66748A;
+    --ok:#107C10;
+    --ok-bg:#E4F5E4;
+    --warn:#B75A00;
+    --warn-bg:#FFEFD6;
+    --danger:#C4314B;
+    --danger-bg:#FBE3E8;
+    --pending:#5B5FC7;
+    --pending-bg:#EBEBFB;
+    --border:#E1E6EE;
+    --radius:12px;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Segoe UI',Calibri,Arial,sans-serif;background:var(--bg);color:var(--text);}
+  a{color:inherit;}
+
+  /* Layout */
+  .app{display:grid;grid-template-columns:240px 1fr;min-height:100vh;}
+  .sidebar{background:linear-gradient(180deg,var(--navy) 0%,var(--navy-2) 100%);color:#fff;padding:24px 16px;display:flex;flex-direction:column;gap:8px;}
+  .brand{display:flex;align-items:center;gap:10px;padding:0 8px 20px 8px;border-bottom:1px solid rgba(255,255,255,.12);margin-bottom:16px;}
+  .brand .logo{width:34px;height:34px;border-radius:8px;background:var(--azure);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;flex:none;}
+  .brand .name{font-size:13.5px;line-height:1.3;font-weight:600;}
+  .brand .name small{display:block;font-weight:400;opacity:.65;font-size:11px;}
+
+  .nav-item{display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:8px;cursor:pointer;color:rgba(255,255,255,.75);font-size:14px;font-weight:500;transition:background .15s;}
+  .nav-item:hover{background:rgba(255,255,255,.07);color:#fff;}
+  .nav-item.active{background:var(--azure);color:#fff;}
+  .nav-item .ic{width:20px;text-align:center;font-size:15px;}
+
+  .sidebar-footer{margin-top:auto;font-size:11px;color:rgba(255,255,255,.45);padding:12px 8px 0;border-top:1px solid rgba(255,255,255,.12);}
+
+  .main{padding:28px 34px;overflow-x:hidden;}
+  .topbar{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;flex-wrap:wrap;gap:12px;}
+  .topbar h1{font-size:22px;margin:0 0 4px;}
+  .topbar p{margin:0;color:var(--muted);font-size:13.5px;}
+  .badge-live{display:inline-flex;align-items:center;gap:6px;background:var(--ok-bg);color:var(--ok);font-size:12px;font-weight:600;padding:6px 12px;border-radius:20px;}
+  .badge-live .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);animation:pulse 1.6s infinite;}
+  @keyframes pulse{0%{opacity:1;}50%{opacity:.35;}100%{opacity:1;}}
+
+  .view{display:none;}
+  .view.active{display:block;}
+
+  /* Cards */
+  .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px;}
+  .grid{display:grid;gap:18px;}
+  .kpis{grid-template-columns:repeat(5,1fr);margin-bottom:22px;}
+  .kpi{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;}
+  .kpi .label{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.03em;margin-bottom:8px;}
+  .kpi .value{font-size:28px;font-weight:700;line-height:1;}
+  .kpi .sub{font-size:12px;color:var(--muted);margin-top:6px;}
+  .kpi.accent .value{color:var(--azure);}
+  .kpi.ok .value{color:var(--ok);}
+  .kpi.warn .value{color:var(--warn);}
+  .kpi.danger .value{color:var(--danger);}
+
+  .charts-row{grid-template-columns:1.6fr 1fr;margin-bottom:22px;}
+  .card h3{margin:0 0 4px;font-size:15px;}
+  .card .card-sub{font-size:12.5px;color:var(--muted);margin:0 0 16px;}
+
+  table{width:100%;border-collapse:collapse;font-size:13.5px;}
+  th{text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);padding:10px 12px;border-bottom:2px solid var(--border);}
+  td{padding:11px 12px;border-bottom:1px solid var(--border);}
+  tr:last-child td{border-bottom:none;}
+  tbody tr:hover{background:#FAFBFD;}
+
+  .badge{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:600;}
+  .badge.ok{background:var(--ok-bg);color:var(--ok);}
+  .badge.tarde{background:var(--warn-bg);color:var(--warn);}
+  .badge.fallido{background:var(--danger-bg);color:var(--danger);}
+  .badge.pendiente{background:var(--pending-bg);color:var(--pending);}
+
+  /* Toolbar / ABM */
+  .toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;}
+  .toolbar .filters{display:flex;gap:8px;flex-wrap:wrap;}
+  select,input[type=text],input[type=date],input[type=time],input[type=number],textarea{
+    font-family:inherit;font-size:13.5px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:#fff;color:var(--text);
+  }
+  select:focus,input:focus,textarea:focus{outline:none;border-color:var(--azure);}
+  .btn{display:inline-flex;align-items:center;gap:7px;background:var(--azure);color:#fff;border:none;padding:9px 16px;border-radius:8px;font-size:13.5px;font-weight:600;cursor:pointer;transition:background .15s;}
+  .btn:hover{background:#0067b8;}
+  .btn.secondary{background:#fff;color:var(--text);border:1px solid var(--border);}
+  .btn.secondary:hover{background:#F2F4F8;}
+  .btn.danger{background:var(--danger);}
+  .btn.danger:hover{background:#a72640;}
+  .icon-btn{background:none;border:1px solid var(--border);border-radius:6px;width:30px;height:30px;cursor:pointer;font-size:14px;display:inline-flex;align-items:center;justify-content:center;margin-right:4px;color:var(--muted);}
+  .icon-btn:hover{background:var(--ice);color:var(--azure);}
+  .icon-btn.del:hover{background:var(--danger-bg);color:var(--danger);}
+
+  .empty{text-align:center;padding:40px 0;color:var(--muted);font-size:13.5px;}
+
+  /* Modal */
+  .overlay{position:fixed;inset:0;background:rgba(11,31,58,.55);display:none;align-items:center;justify-content:center;z-index:50;}
+  .overlay.active{display:flex;}
+  .modal{background:#fff;border-radius:14px;padding:26px 28px;width:460px;max-width:92vw;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.25);}
+  .modal h2{margin:0 0 4px;font-size:17px;}
+  .modal .modal-sub{margin:0 0 18px;color:var(--muted);font-size:12.5px;}
+  .field{margin-bottom:14px;}
+  .field label{display:block;font-size:12.5px;font-weight:600;margin-bottom:6px;color:#333;}
+  .field select,.field input,.field textarea{width:100%;}
+  .field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px;}
+
+  /* Toast */
+  .toast{position:fixed;bottom:24px;right:24px;background:var(--navy);color:#fff;padding:13px 18px;border-radius:10px;font-size:13.5px;box-shadow:0 10px 30px rgba(0,0,0,.25);opacity:0;transform:translateY(10px);transition:all .25s;z-index:60;}
+  .toast.show{opacity:1;transform:translateY(0);}
+
+  /* Architecture view */
+  .flow{display:flex;align-items:stretch;gap:10px;overflow-x:auto;padding:6px 2px 18px;}
+  .flow-step{min-width:150px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center;position:relative;flex:1;}
+  .flow-step .num{width:24px;height:24px;border-radius:50%;background:var(--azure);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;margin:0 auto 8px;}
+  .flow-step .t{font-size:13px;font-weight:700;margin-bottom:4px;}
+  .flow-step .d{font-size:11.5px;color:var(--muted);line-height:1.4;}
+  .flow-arrow{align-self:center;color:var(--azure);font-size:18px;flex:none;}
+
+  .comp-grid{grid-template-columns:repeat(2,1fr);margin-top:18px;}
+  .comp-card{border-left:4px solid var(--azure);}
+  .comp-card h4{margin:0 0 6px;font-size:14px;}
+  .comp-card p{margin:0;font-size:12.8px;color:var(--muted);line-height:1.5;}
+  .comp-card .tag{display:inline-block;font-size:10.5px;font-weight:700;color:var(--azure);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px;}
+
+  .mermaid-wrap{overflow-x:auto;padding:10px 2px;}
+  .impl-table td.svc{font-weight:600;}
+  .impl-table td{vertical-align:top;font-size:12.8px;}
+  .impl-table th{white-space:nowrap;}
+
+  /* Copiloto */
+  .chat-card{display:flex;flex-direction:column;height:calc(100vh - 230px);min-height:420px;padding:0;overflow:hidden;}
+  .chat-messages{flex:1;overflow-y:auto;padding:20px 22px;display:flex;flex-direction:column;gap:14px;}
+  .msg{max-width:72%;padding:11px 14px;border-radius:12px;font-size:13.5px;line-height:1.5;white-space:pre-line;}
+  .msg.bot{align-self:flex-start;background:var(--ice);color:var(--text);border-bottom-left-radius:4px;}
+  .msg.user{align-self:flex-end;background:var(--azure);color:#fff;border-bottom-right-radius:4px;}
+  .msg.bot::before{content:"🤖 ";}
+  .chat-suggestions{display:flex;gap:8px;flex-wrap:wrap;padding:0 22px 14px;}
+  .chip{background:#fff;border:1px solid var(--border);border-radius:20px;padding:7px 13px;font-size:12.5px;color:var(--azure);cursor:pointer;transition:background .15s;}
+  .chip:hover{background:var(--ice);}
+  .chat-input-row{display:flex;gap:10px;padding:16px 22px;border-top:1px solid var(--border);}
+  .chat-input-row input{flex:1;}
+
+  @media (max-width:1100px){
+    .kpis{grid-template-columns:repeat(2,1fr);}
+    .charts-row{grid-template-columns:1fr;}
+    .comp-grid{grid-template-columns:1fr;}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo">☁</div>
+      <div class="name">Cumplimiento SMV<small>Compañía de Seguros</small></div>
+    </div>
+    <div class="nav-item active" data-view="arquitectura"><span class="ic">🗺</span> Arquitectura</div>
+    <div class="nav-item" data-view="dashboard"><span class="ic">📊</span> Dashboard</div>
+    <div class="nav-item" data-view="abm"><span class="ic">📋</span> ABM · Envíos</div>
+    <div class="nav-item" data-view="copiloto"><span class="ic">🤖</span> Agente ABM</div>
+    <div class="sidebar-footer">Demo interactiva · datos simulados<br/>Basado en Arquitectura de Referencia Azure</div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+
+    <!-- ===================== VISTA: ARQUITECTURA ===================== -->
+    <section class="view active" id="view-arquitectura">
+      <div class="topbar">
+        <div>
+          <h1>Monitoreo de Cumplimiento de Envío de Información a la SMV</h1>
+          <p>Ingesta, validación, envío y evidencia de reportes regulatorios diarios — Core on‑premises → Azure</p>
+        </div>
+        <span class="badge-live"><span class="dot"></span> Entorno de demo</span>
+      </div>
+
+      <div class="card" style="margin-bottom:22px;">
+        <h3>Flujo diario, paso a paso</h3>
+        <p class="card-sub">Punto crítico de control: los pasos 1 a 5 deben completarse antes del plazo diario fijado por la SMV.</p>
+        <div class="flow">
+          <div class="flow-step"><div class="num">1</div><div class="t">Extracción</div><div class="d">SHIR extrae datos del core on-prem (sin puertos entrantes)</div></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step"><div class="num">2</div><div class="t">Generación XML</div><div class="d">Azure Data Factory arma el XML del día</div></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step"><div class="num">3</div><div class="t">Validación XSD</div><div class="d">Azure Functions valida contra el esquema de la SMV</div></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step"><div class="num">4</div><div class="t">Carga al portal</div><div class="d">RPA (Power Automate Desktop) sube el XML a la SMV</div></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step"><div class="num">5</div><div class="t">Evidencia</div><div class="d">Constancia guardada en Blob inmutable (WORM) 365 días</div></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step"><div class="num">6</div><div class="t">Monitoreo</div><div class="d">Estado visible en Power BI + alertas Teams/Email</div></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:22px;">
+        <h3>Diagrama de arquitectura</h3>
+        <p class="card-sub">Vista técnica de los servicios Azure involucrados y su interacción con el core on-premises y el portal de la SMV.</p>
+        <div class="mermaid-wrap">
+          <div class="mermaid">
+flowchart LR
+    subgraph OnPrem["On-Premises"]
+        CORE[("Core Asegurador\npólizas / siniestros / reservas")]
+        SHIR["Self-Hosted\nIntegration Runtime"]
+    end
+
+    subgraph AzureCloud["Azure"]
+        subgraph Ingesta["Ingesta y Procesamiento"]
+            ADF["Azure Data Factory"]
+            BLOB1[("Blob Storage\nraw / processed")]
+        end
+        subgraph Validacion["Validación"]
+            FUNC["Azure Functions\nValidación XSD"]
+        end
+        subgraph Orquestacion["Orquestación y Envío"]
+            LOGIC["Logic Apps"]
+            SQLDB[("Azure SQL Database\ncalendario regulatorio")]
+            DURABLE["Durable Functions\nreintentos"]
+            RPA["Power Automate Desktop\n(RPA)"]
+        end
+        subgraph Evidencia["Evidencia y Monitoreo"]
+            WORM[("Blob WORM\n365 días")]
+            PBI["Power BI"]
+            ALERT["Alertas\nTeams / Email"]
+        end
+    end
+
+    SMV{{"Portal Web SMV"}}
+
+    CORE --> SHIR --> ADF --> BLOB1 --> FUNC --> LOGIC
+    LOGIC --> SQLDB
+    LOGIC --> DURABLE --> RPA --> SMV
+    SMV -. constancia .-> WORM
+    WORM --> PBI --> ALERT
+    LOGIC --> PBI
+          </div>
+        </div>
+      </div>
+
+      <div class="grid comp-grid">
+        <div class="card comp-card">
+          <span class="tag">Ingesta y procesamiento</span>
+          <h4>Self-Hosted Integration Runtime + Data Factory</h4>
+          <p>Agente on-premises que extrae pólizas, siniestros y reservas del core con solo tráfico saliente HTTPS. ADF orquesta la extracción diaria; Blob Storage aterriza los datos crudos y procesados.</p>
+        </div>
+        <div class="card comp-card">
+          <span class="tag">Validación</span>
+          <h4>Azure Functions — Validación XSD</h4>
+          <p>Valida el XML generado contra el esquema exigido por la SMV antes de continuar el flujo, evitando rechazos por formato.</p>
+        </div>
+        <div class="card comp-card">
+          <span class="tag">Orquestación y envío</span>
+          <h4>Logic Apps + SQL DB + Durable Functions + RPA</h4>
+          <p>Logic Apps coordina el flujo diario; SQL Database mantiene el calendario regulatorio; Durable Functions reintenta ante fallas transitorias; Power Automate Desktop automatiza la carga en el portal web de la SMV (sin API/SFTP).</p>
+        </div>
+        <div class="card comp-card">
+          <span class="tag">Evidencia y monitoreo</span>
+          <h4>Blob WORM + Power BI + Alertas</h4>
+          <p>Constancias inmutables con retención de 365 días (lifecycle Hot → Cool → Archive). Power BI expone el dashboard de cumplimiento; Teams/Email alertan ante riesgo de incumplimiento del plazo diario.</p>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:22px;">
+        <h3>Guía técnica para implementación en Azure</h3>
+        <p class="card-sub">Servicios, SKU recomendado y consideraciones de seguridad/red para llevar esta arquitectura a producción.</p>
+        <table class="impl-table">
+          <thead>
+            <tr><th>Capa</th><th>Servicio Azure</th><th>SKU / Tier sugerido</th><th>Consideraciones clave</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="svc">Ingesta</td>
+              <td>Self-Hosted Integration Runtime + Azure Data Factory</td>
+              <td>ADF: Standard, trigger Tumbling Window diario</td>
+              <td>SHIR en servidor on-prem con solo salida 443; ADF con Managed Identity, sin credenciales embebidas.</td>
+            </tr>
+            <tr>
+              <td class="svc">Landing de datos</td>
+              <td>Azure Storage Account (Blob)</td>
+              <td>Standard GPv2, tier Hot</td>
+              <td>Contenedores separados raw/processed; acceso vía Private Endpoint, sin claves compartidas (RBAC + Managed Identity).</td>
+            </tr>
+            <tr>
+              <td class="svc">Validación</td>
+              <td>Azure Functions</td>
+              <td>Elastic Premium (evita cold start)</td>
+              <td>Valida XML contra XSD; integrado con Application Insights para trazabilidad de errores.</td>
+            </tr>
+            <tr>
+              <td class="svc">Orquestación</td>
+              <td>Logic Apps (Standard)</td>
+              <td>Standard, plan dedicado</td>
+              <td>Workflow que coordina Storage → Functions → SQL; dispara alertas ante fallo de cualquier paso.</td>
+            </tr>
+            <tr>
+              <td class="svc">Calendario regulatorio</td>
+              <td>Azure SQL Database</td>
+              <td>Basic / S0 (bajo volumen)</td>
+              <td>TDE habilitado; acceso vía Private Endpoint; tabla de obligaciones y estados diarios.</td>
+            </tr>
+            <tr>
+              <td class="svc">Reintentos</td>
+              <td>Durable Functions (misma Function App)</td>
+              <td>Patrón Orchestrator + Retry</td>
+              <td>Backoff exponencial ante fallas transitorias de red o del portal SMV.</td>
+            </tr>
+            <tr>
+              <td class="svc">Carga al portal</td>
+              <td>Power Automate Desktop (RPA)</td>
+              <td>Licencia por máquina/usuario</td>
+              <td>Ejecuta en VM Windows (Azure VM); credenciales del portal SMV en Azure Key Vault, nunca hardcodeadas.</td>
+            </tr>
+            <tr>
+              <td class="svc">Evidencia</td>
+              <td>Blob Storage con Immutable Policy (WORM)</td>
+              <td>Lifecycle Hot → Cool → Archive</td>
+              <td>Retención de 365 días; política de inmutabilidad a nivel de contenedor (cumplimiento regulatorio).</td>
+            </tr>
+            <tr>
+              <td class="svc">Monitoreo</td>
+              <td>Power BI</td>
+              <td>Pro / Premium por usuario</td>
+              <td>Dataset conectado a SQL/Storage; refresco programado o DirectQuery según SLA de actualización.</td>
+            </tr>
+            <tr>
+              <td class="svc">Alertas</td>
+              <td>Logic Apps + Azure Monitor Action Groups</td>
+              <td>—</td>
+              <td>Conectores nativos a Teams y Outlook/Office 365 ante envíos tarde o fallidos.</td>
+            </tr>
+            <tr>
+              <td class="svc">Seguridad transversal</td>
+              <td>Azure Key Vault + Managed Identities + Private Endpoints</td>
+              <td>—</td>
+              <td>Todos los secretos (credenciales RPA, connection strings) en Key Vault; identidades administradas en ADF/Functions/Logic Apps; red privada extremo a extremo.</td>
+            </tr>
+            <tr>
+              <td class="svc">Observabilidad</td>
+              <td>Azure Monitor + Log Analytics + Application Insights</td>
+              <td>—</td>
+              <td>Logs centralizados de todos los componentes; alertas basadas en métricas de fallo/latencia del pipeline diario.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ===================== VISTA: DASHBOARD ===================== -->
+    <section class="view" id="view-dashboard">
+      <div class="topbar">
+        <div>
+          <h1>Dashboard de Cumplimiento</h1>
+          <p>Estado de los envíos diarios a la SMV — últimos 30 días</p>
+        </div>
+        <span class="badge-live"><span class="dot"></span> Datos en vivo (demo)</span>
+      </div>
+
+      <div class="grid kpis">
+        <div class="kpi accent">
+          <div class="label">Cumplimiento</div>
+          <div class="value" id="kpi-cumplimiento">—</div>
+          <div class="sub">Envíos a tiempo / total con resultado</div>
+        </div>
+        <div class="kpi ok">
+          <div class="label">A tiempo</div>
+          <div class="value" id="kpi-atiempo">—</div>
+          <div class="sub">Envíos dentro del plazo</div>
+        </div>
+        <div class="kpi warn">
+          <div class="label">Tarde</div>
+          <div class="value" id="kpi-tarde">—</div>
+          <div class="sub">Confirmados fuera de plazo</div>
+        </div>
+        <div class="kpi danger">
+          <div class="label">Fallidos</div>
+          <div class="value" id="kpi-fallidos">—</div>
+          <div class="sub">Sin confirmación de envío</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Alertas activas</div>
+          <div class="value" id="kpi-alertas">—</div>
+          <div class="sub">Tarde + fallido, últimos 30 días</div>
+        </div>
+      </div>
+
+      <div class="grid charts-row">
+        <div class="card">
+          <h3>Estado de envíos por día</h3>
+          <p class="card-sub">Distribución diaria de resultados de envío (últimos 30 días)</p>
+          <canvas id="chartTrend" height="110"></canvas>
+        </div>
+        <div class="card">
+          <h3>Distribución global</h3>
+          <p class="card-sub">Participación de cada estado sobre el total</p>
+          <canvas id="chartDonut" height="200"></canvas>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Alertas recientes</h3>
+        <p class="card-sub">Envíos tarde o fallidos que requirieron intervención / notificación</p>
+        <table>
+          <thead>
+            <tr><th>Fecha</th><th>Tipo de reporte</th><th>Plazo</th><th>Estado</th><th>Intentos</th><th>Constancia</th></tr>
+          </thead>
+          <tbody id="alertsBody"></tbody>
+        </table>
+        <div class="empty" id="alertsEmpty" style="display:none;">Sin alertas registradas en el período 🎉</div>
+      </div>
+    </section>
+
+    <!-- ===================== VISTA: ABM ===================== -->
+    <section class="view" id="view-abm">
+      <div class="topbar">
+        <div>
+          <h1>ABM · Envíos Regulatorios</h1>
+          <p>Alta, baja y modificación del calendario de obligaciones diarias ante la SMV</p>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <div class="filters">
+          <input type="text" id="fSearch" placeholder="Buscar por tipo de reporte…" style="width:210px;" />
+          <select id="fEstado">
+            <option value="">Todos los estados</option>
+            <option value="Pendiente">Pendiente</option>
+            <option value="A Tiempo">A Tiempo</option>
+            <option value="Tarde">Tarde</option>
+            <option value="Fallido">Fallido</option>
+          </select>
+        </div>
+        <button class="btn" id="btnNuevo">＋ Nuevo Envío</button>
+      </div>
+
+      <div class="card" style="padding:0;overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Fecha</th><th>Tipo de reporte</th><th>Plazo</th><th>Estado</th><th>Intentos</th><th>Constancia</th><th>Observaciones</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="abmBody"></tbody>
+        </table>
+        <div class="empty" id="abmEmpty" style="display:none;padding:30px;">No se encontraron registros con los filtros aplicados.</div>
+      </div>
+    </section>
+
+    <!-- ===================== VISTA: COPILOTO ===================== -->
+    <section class="view" id="view-copiloto">
+      <div class="topbar">
+        <div>
+          <h1>Agente ABM · Cumplimiento SMV</h1>
+          <p>Preguntá sobre el estado de los envíos, alertas o cómo funciona el flujo de cumplimiento</p>
+        </div>
+      </div>
+
+      <div class="card chat-card">
+        <div class="chat-messages" id="chatMessages"></div>
+        <div class="chat-suggestions" id="chatSuggestions">
+          <button class="chip" type="button">¿Cuál es la tasa de cumplimiento?</button>
+          <button class="chip" type="button">¿Qué envíos fallaron?</button>
+          <button class="chip" type="button">¿Cuál es el estado de hoy?</button>
+          <button class="chip" type="button">¿Qué es el SHIR?</button>
+          <button class="chip" type="button">¿Cómo funciona el flujo?</button>
+        </div>
+        <form id="chatForm" class="chat-input-row">
+          <input type="text" id="chatInput" placeholder="Escribí tu pregunta…" autocomplete="off" />
+          <button type="submit" class="btn">Enviar</button>
+        </form>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- Modal ABM -->
+<div class="overlay" id="modalOverlay">
+  <div class="modal">
+    <h2 id="modalTitle">Nuevo Envío</h2>
+    <p class="modal-sub">Registro de obligación diaria de envío a la SMV</p>
+    <form id="formEnvio">
+      <input type="hidden" id="fId" />
+      <div class="field-row">
+        <div class="field">
+          <label>Fecha</label>
+          <input type="date" id="fFecha" required />
+        </div>
+        <div class="field">
+          <label>Plazo (hora límite)</label>
+          <input type="time" id="fPlazo" required />
+        </div>
+      </div>
+      <div class="field">
+        <label>Tipo de reporte</label>
+        <select id="fTipo" required>
+          <option value="Pólizas">Pólizas</option>
+          <option value="Siniestros">Siniestros</option>
+          <option value="Reservas Técnicas">Reservas Técnicas</option>
+        </select>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Estado</label>
+          <select id="fEstadoModal" required>
+            <option value="Pendiente">Pendiente</option>
+            <option value="A Tiempo">A Tiempo</option>
+            <option value="Tarde">Tarde</option>
+            <option value="Fallido">Fallido</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Intentos RPA</label>
+          <input type="number" id="fIntentos" min="0" max="10" value="0" required />
+        </div>
+      </div>
+      <div class="field">
+        <label>Observaciones</label>
+        <textarea id="fObs" rows="2" placeholder="Notas del monitoreo, causa de reintento, etc."></textarea>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn secondary" id="btnCancelar">Cancelar</button>
+        <button type="submit" class="btn" id="btnGuardar">Guardar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ---------------------------------------------------------------
+   Datos simulados — calendario de obligaciones diarias ante la SMV
+   Persistencia local (localStorage) para que la demo sea editable
+---------------------------------------------------------------- */
+const STORAGE_KEY = 'smv_envios_demo_v1';
+const TIPOS = ['Pólizas', 'Siniestros', 'Reservas Técnicas'];
+
+if (window.mermaid){
+  mermaid.initialize({ startOnLoad: true, theme: 'base', themeVariables: { primaryColor: '#EAF3FC', primaryBorderColor: '#0078D4', lineColor: '#0078D4', fontSize: '13px' } });
+}
+
+function seedData(){
+  const registros = [];
+  const today = new Date();
+  for (let i = 29; i >= 0; i--){
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const fecha = d.toISOString().slice(0,10);
+    const tipo = TIPOS[i % TIPOS.length];
+
+    // Distribución determinística pero variada de estados
+    const r = (i * 37 + tipo.length * 13) % 100;
+    let estado, intentos, constancia;
+    if (i === 0){
+      estado = 'Pendiente'; intentos = 0; constancia = '—';
+    } else if (r < 72){
+      estado = 'A Tiempo'; intentos = 1; constancia = 'EVID-' + fecha.replace(/-/g,'') + '-' + Math.floor(1000+Math.random()*9000);
+    } else if (r < 90){
+      estado = 'Tarde'; intentos = 2 + (r % 2); constancia = 'EVID-' + fecha.replace(/-/g,'') + '-' + Math.floor(1000+Math.random()*9000);
+    } else {
+      estado = 'Fallido'; intentos = 3; constancia = '—';
+    }
+
+    registros.push({
+      id: crypto.randomUUID ? crypto.randomUUID() : 'id-' + fecha + '-' + tipo,
+      fecha, tipo, plazo: '18:00',
+      estado, intentos,
+      constancia,
+      obs: estado === 'Fallido' ? 'Portal SMV no disponible tras reintentos automáticos.'
+         : estado === 'Tarde' ? 'Confirmado fuera de plazo, requirió reintento.'
+         : ''
+    });
+  }
+  return registros;
+}
+
+function loadData(){
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (raw){
+    try { return JSON.parse(raw); } catch(e){ /* fallthrough */ }
+  }
+  const seeded = seedData();
+  saveData(seeded);
+  return seeded;
+}
+function saveData(data){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+let DATA = loadData();
+
+/* ---------------------------------------------------------------
+   Navegación
+---------------------------------------------------------------- */
+document.querySelectorAll('.nav-item').forEach(item=>{
+  item.addEventListener('click', ()=>{
+    document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+    item.classList.add('active');
+    document.getElementById('view-' + item.dataset.view).classList.add('active');
+    if (item.dataset.view === 'dashboard') renderDashboard();
+    if (item.dataset.view === 'abm') renderAbm();
+    if (item.dataset.view === 'copiloto') initCopiloto();
+  });
+});
+
+/* ---------------------------------------------------------------
+   Toast helper
+---------------------------------------------------------------- */
+let toastTimer;
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.classList.remove('show'), 2400);
+}
+
+/* ---------------------------------------------------------------
+   Badge helper
+---------------------------------------------------------------- */
+function badge(estado){
+  const map = { 'A Tiempo':'ok', 'Tarde':'tarde', 'Fallido':'fallido', 'Pendiente':'pendiente' };
+  return `<span class="badge ${map[estado]}">${estado}</span>`;
+}
+
+/* ---------------------------------------------------------------
+   ===================== ABM =====================
+---------------------------------------------------------------- */
+const abmBody = document.getElementById('abmBody');
+const abmEmpty = document.getElementById('abmEmpty');
+const modalOverlay = document.getElementById('modalOverlay');
+const formEnvio = document.getElementById('formEnvio');
+
+function filteredData(){
+  const search = document.getElementById('fSearch').value.trim().toLowerCase();
+  const estado = document.getElementById('fEstado').value;
+  return DATA
+    .slice()
+    .sort((a,b)=> b.fecha.localeCompare(a.fecha))
+    .filter(r => (!search || r.tipo.toLowerCase().includes(search)) && (!estado || r.estado === estado));
+}
+
+function renderAbm(){
+  const rows = filteredData();
+  abmBody.innerHTML = '';
+  abmEmpty.style.display = rows.length ? 'none' : 'block';
+  rows.forEach(r=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${r.fecha}</td>
+      <td>${r.tipo}</td>
+      <td>${r.plazo}</td>
+      <td>${badge(r.estado)}</td>
+      <td>${r.intentos}</td>
+      <td>${r.constancia}</td>
+      <td style="max-width:220px;color:var(--muted);font-size:12.5px;">${r.obs || '—'}</td>
+      <td style="white-space:nowrap;">
+        <button class="icon-btn" title="Editar" data-edit="${r.id}">✎</button>
+        <button class="icon-btn del" title="Eliminar" data-del="${r.id}">🗑</button>
+      </td>`;
+    abmBody.appendChild(tr);
+  });
+  abmBody.querySelectorAll('[data-edit]').forEach(b=>b.addEventListener('click', ()=>openModal(b.dataset.edit)));
+  abmBody.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click', ()=>deleteRow(b.dataset.del)));
+}
+
+function openModal(id){
+  const isEdit = !!id;
+  document.getElementById('modalTitle').textContent = isEdit ? 'Editar Envío' : 'Nuevo Envío';
+  if (isEdit){
+    const r = DATA.find(x=>x.id === id);
+    document.getElementById('fId').value = r.id;
+    document.getElementById('fFecha').value = r.fecha;
+    document.getElementById('fPlazo').value = r.plazo;
+    document.getElementById('fTipo').value = r.tipo;
+    document.getElementById('fEstadoModal').value = r.estado;
+    document.getElementById('fIntentos').value = r.intentos;
+    document.getElementById('fObs').value = r.obs || '';
+  } else {
+    formEnvio.reset();
+    document.getElementById('fId').value = '';
+    document.getElementById('fFecha').value = new Date().toISOString().slice(0,10);
+    document.getElementById('fPlazo').value = '18:00';
+    document.getElementById('fIntentos').value = 0;
+  }
+  modalOverlay.classList.add('active');
+}
+function closeModal(){ modalOverlay.classList.remove('active'); }
+
+document.getElementById('btnNuevo').addEventListener('click', ()=>openModal(null));
+document.getElementById('btnCancelar').addEventListener('click', closeModal);
+modalOverlay.addEventListener('click', e=>{ if (e.target === modalOverlay) closeModal(); });
+
+formEnvio.addEventListener('submit', e=>{
+  e.preventDefault();
+  const id = document.getElementById('fId').value;
+  const estado = document.getElementById('fEstadoModal').value;
+  const record = {
+    id: id || (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Date.now()),
+    fecha: document.getElementById('fFecha').value,
+    plazo: document.getElementById('fPlazo').value,
+    tipo: document.getElementById('fTipo').value,
+    estado,
+    intentos: Number(document.getElementById('fIntentos').value || 0),
+    constancia: (estado === 'A Tiempo' || estado === 'Tarde')
+      ? ('EVID-' + document.getElementById('fFecha').value.replace(/-/g,'') + '-' + Math.floor(1000+Math.random()*9000))
+      : '—',
+    obs: document.getElementById('fObs').value.trim()
+  };
+
+  if (id){
+    const idx = DATA.findIndex(x=>x.id === id);
+    // conservar constancia existente si el estado no cambió y ya tenía una
+    if (DATA[idx].estado === estado && DATA[idx].constancia !== '—') record.constancia = DATA[idx].constancia;
+    DATA[idx] = record;
+    showToast('Envío actualizado correctamente.');
+  } else {
+    DATA.push(record);
+    showToast('Nuevo envío registrado.');
+  }
+  saveData(DATA);
+  closeModal();
+  renderAbm();
+});
+
+function deleteRow(id){
+  const r = DATA.find(x=>x.id === id);
+  if (!r) return;
+  if (!confirm(`¿Eliminar el envío del ${r.fecha} (${r.tipo})? Esta acción no se puede deshacer.`)) return;
+  DATA = DATA.filter(x=>x.id !== id);
+  saveData(DATA);
+  showToast('Registro eliminado.');
+  renderAbm();
+}
+
+document.getElementById('fSearch').addEventListener('input', renderAbm);
+document.getElementById('fEstado').addEventListener('change', renderAbm);
+
+/* ---------------------------------------------------------------
+   ===================== DASHBOARD =====================
+---------------------------------------------------------------- */
+let trendChart, donutChart;
+
+function renderDashboard(){
+  const sorted = DATA.slice().sort((a,b)=>a.fecha.localeCompare(b.fecha));
+  const counts = { 'A Tiempo':0, 'Tarde':0, 'Fallido':0, 'Pendiente':0 };
+  sorted.forEach(r=>counts[r.estado]++);
+
+  const withResult = counts['A Tiempo'] + counts['Tarde'] + counts['Fallido'];
+  const cumplimiento = withResult ? Math.round((counts['A Tiempo'] / withResult) * 100) : 0;
+
+  document.getElementById('kpi-cumplimiento').textContent = cumplimiento + '%';
+  document.getElementById('kpi-atiempo').textContent = counts['A Tiempo'];
+  document.getElementById('kpi-tarde').textContent = counts['Tarde'];
+  document.getElementById('kpi-fallidos').textContent = counts['Fallido'];
+  document.getElementById('kpi-alertas').textContent = counts['Tarde'] + counts['Fallido'];
+
+  // Trend chart: stacked bar por día
+  const labels = sorted.map(r=>r.fecha.slice(5));
+  const dataOk = sorted.map(r=>r.estado==='A Tiempo'?1:0);
+  const dataTarde = sorted.map(r=>r.estado==='Tarde'?1:0);
+  const dataFallido = sorted.map(r=>r.estado==='Fallido'?1:0);
+  const dataPend = sorted.map(r=>r.estado==='Pendiente'?1:0);
+
+  const ctxTrend = document.getElementById('chartTrend');
+  if (trendChart) trendChart.destroy();
+  trendChart = new Chart(ctxTrend, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label:'A Tiempo', data:dataOk, backgroundColor:'#107C10', stack:'s' },
+        { label:'Tarde', data:dataTarde, backgroundColor:'#B75A00', stack:'s' },
+        { label:'Fallido', data:dataFallido, backgroundColor:'#C4314B', stack:'s' },
+        { label:'Pendiente', data:dataPend, backgroundColor:'#5B5FC7', stack:'s' }
+      ]
+    },
+    options: {
+      responsive:true,
+      plugins:{ legend:{ position:'bottom', labels:{ boxWidth:10, font:{ size:11 } } } },
+      scales:{ x:{ stacked:true, ticks:{ maxRotation:0, autoSkip:true, font:{ size:10 } } }, y:{ stacked:true, ticks:{ stepSize:1 }, grid:{ color:'#EEF1F6' } } }
+    }
+  });
+
+  const ctxDonut = document.getElementById('chartDonut');
+  if (donutChart) donutChart.destroy();
+  donutChart = new Chart(ctxDonut, {
+    type: 'doughnut',
+    data: {
+      labels: ['A Tiempo','Tarde','Fallido','Pendiente'],
+      datasets: [{ data:[counts['A Tiempo'],counts['Tarde'],counts['Fallido'],counts['Pendiente']],
+        backgroundColor:['#107C10','#B75A00','#C4314B','#5B5FC7'] }]
+    },
+    options: { responsive:true, plugins:{ legend:{ position:'bottom', labels:{ boxWidth:10, font:{ size:11 } } } }, cutout:'62%' }
+  });
+
+  // Alertas recientes
+  const alerts = sorted.filter(r=>r.estado==='Tarde' || r.estado==='Fallido').sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  const alertsBody = document.getElementById('alertsBody');
+  const alertsEmpty = document.getElementById('alertsEmpty');
+  alertsBody.innerHTML = '';
+  alertsEmpty.style.display = alerts.length ? 'none' : 'block';
+  alerts.forEach(r=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${r.fecha}</td><td>${r.tipo}</td><td>${r.plazo}</td><td>${badge(r.estado)}</td><td>${r.intentos}</td><td>${r.constancia}</td>`;
+    alertsBody.appendChild(tr);
+  });
+}
+
+/* ---------------------------------------------------------------
+   ===================== COPILOTO =====================
+---------------------------------------------------------------- */
+const GLOSSARY = {
+  shir: { keywords:['shir','integration runtime','self-hosted'], text:'El SHIR (Self-Hosted Integration Runtime) es un agente instalado on-premises que extrae datos del core asegurador (pólizas, siniestros, reservas) usando solo tráfico saliente HTTPS, sin abrir puertos entrantes.' },
+  adf: { keywords:['data factory','adf','generacion xml','generación xml'], text:'Azure Data Factory orquesta la extracción diaria de datos y arma el XML del día que luego se valida y envía a la SMV.' },
+  functions: { keywords:['xsd','validacion','validación','azure functions'], text:'Azure Functions valida el XML generado contra el esquema XSD exigido por la SMV, evitando rechazos por formato antes de continuar el flujo.' },
+  logic: { keywords:['logic apps','orquestacion','orquestación'], text:'Logic Apps coordina el flujo diario completo: dispara la extracción, la validación, el envío y las alertas ante cualquier falla.' },
+  sql: { keywords:['sql database','calendario regulatorio'], text:'Azure SQL Database mantiene el calendario de obligaciones regulatorias y el estado de cada envío diario.' },
+  durable: { keywords:['durable functions','reintentos','reintento'], text:'Durable Functions implementa reintentos automáticos con backoff ante fallas transitorias, por ejemplo si el portal de la SMV no responde.' },
+  rpa: { keywords:['rpa','power automate','carga al portal'], text:'Power Automate Desktop (RPA) automatiza la carga del XML en el portal web de la SMV, ya que no existe API ni SFTP disponible.' },
+  worm: { keywords:['worm','inmutable','evidencia','constancia'], text:'La constancia de cada envío se guarda en Blob Storage con política de inmutabilidad (WORM), con retención de 365 días y ciclo de vida Hot → Cool → Archive.' },
+  pbi: { keywords:['power bi','monitoreo'], text:'Power BI expone el dashboard de cumplimiento con el estado de los envíos, complementado con alertas por Teams y Email.' },
+  alertas: { keywords:['notificacion','notificación'], text:'Ante un envío tarde o fallido, el sistema dispara alertas automáticas por Teams y Email para intervención inmediata.' },
+  flujo: { keywords:['flujo','como funciona','cómo funciona','pasos del proceso','proceso'], text:'El flujo diario tiene 6 pasos: 1) Extracción (SHIR) → 2) Generación XML (ADF) → 3) Validación XSD (Functions) → 4) Carga al portal (RPA) → 5) Evidencia (Blob WORM) → 6) Monitoreo (Power BI + alertas). Los pasos 1 a 5 deben completarse antes del plazo diario fijado por la SMV.' }
+};
+
+function normalize(str){
+  return str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+}
+function getStats(){
+  const counts = { 'A Tiempo':0, 'Tarde':0, 'Fallido':0, 'Pendiente':0 };
+  DATA.forEach(r=>counts[r.estado]++);
+  const withResult = counts['A Tiempo'] + counts['Tarde'] + counts['Fallido'];
+  const cumplimiento = withResult ? Math.round((counts['A Tiempo']/withResult)*100) : 0;
+  return { counts, cumplimiento };
+}
+function listByEstado(estado, limit=5){
+  return DATA.filter(r=>r.estado===estado).sort((a,b)=>b.fecha.localeCompare(a.fecha)).slice(0,limit);
+}
+function formatList(records){
+  return records.map(r=>`• ${r.fecha} — ${r.tipo} (${r.estado}${r.intentos?`, ${r.intentos} intento(s)`:''})`).join('\n');
+}
+function parseDateFromText(norm){
+  const today = new Date();
+  if (norm.includes('hoy')) return today.toISOString().slice(0,10);
+  if (norm.includes('ayer')){
+    const d = new Date(today); d.setDate(d.getDate()-1); return d.toISOString().slice(0,10);
+  }
+  const m = norm.match(/(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?/);
+  if (m){
+    const day = m[1].padStart(2,'0');
+    const month = m[2].padStart(2,'0');
+    let year = m[3] ? m[3] : String(today.getFullYear());
+    if (year.length===2) year = '20'+year;
+    return `${year}-${month}-${day}`;
+  }
+  return null;
+}
+
+function answerQuestion(raw){
+  const q = normalize(raw);
+  if (!q) return '¿En qué te puedo ayudar? Preguntame sobre el estado de los envíos, alertas recientes o cómo funciona el flujo.';
+
+  if (/^(hola|buenas|hey|ayuda|que podes hacer|help)/.test(q)){
+    return 'Hola 👋 Puedo ayudarte con:\n• Estado de cumplimiento y conteos (a tiempo, tarde, fallidos, pendientes)\n• Estado de un envío en una fecha puntual (ej: "estado del 05/09")\n• Alertas recientes (tarde o fallidas)\n• Explicación del flujo y los componentes de arquitectura (SHIR, ADF, Logic Apps, RPA, Blob WORM, etc.)';
+  }
+  if (q.includes('cumplimiento') || q.includes('tasa')){
+    const s = getStats();
+    const total = s.counts['A Tiempo']+s.counts['Tarde']+s.counts['Fallido'];
+    return `La tasa de cumplimiento actual es del ${s.cumplimiento}% (${s.counts['A Tiempo']} a tiempo sobre ${total} envíos con resultado).`;
+  }
+  if (q.includes('fallid')){
+    const fallidos = listByEstado('Fallido');
+    return fallidos.length ? `Hay ${fallidos.length} envío(s) fallido(s) recientes:\n${formatList(fallidos)}` : 'No hay envíos fallidos registrados 🎉';
+  }
+  if (q.includes('tarde')){
+    const tarde = listByEstado('Tarde');
+    return tarde.length ? `Hay ${tarde.length} envío(s) confirmado(s) tarde recientes:\n${formatList(tarde)}` : 'No hay envíos tarde registrados 🎉';
+  }
+  if (q.includes('pendiente')){
+    const pend = listByEstado('Pendiente');
+    return pend.length ? `Envíos pendientes:\n${formatList(pend)}` : 'No hay envíos pendientes.';
+  }
+  if (q.includes('alerta')){
+    const alerts = DATA.filter(r=>r.estado==='Tarde'||r.estado==='Fallido').sort((a,b)=>b.fecha.localeCompare(a.fecha)).slice(0,5);
+    return alerts.length ? `Alertas recientes (tarde/fallido):\n${formatList(alerts)}` : 'Sin alertas recientes 🎉';
+  }
+  const fecha = parseDateFromText(q);
+  if (fecha && (q.includes('estado') || q.includes('hoy') || q.includes('ayer') || /\d{1,2}[\/\-]\d{1,2}/.test(q))){
+    const r = DATA.find(x=>x.fecha===fecha);
+    return r
+      ? `El envío del ${r.fecha} (${r.tipo}) está en estado "${r.estado}", plazo ${r.plazo}, ${r.intentos} intento(s). Constancia: ${r.constancia}.`
+      : `No encontré ningún envío registrado para la fecha ${fecha}.`;
+  }
+  for (const key in GLOSSARY){
+    if (GLOSSARY[key].keywords.some(k=>q.includes(k))) return GLOSSARY[key].text;
+  }
+  return 'No tengo información específica sobre eso todavía. Puedo responder sobre cumplimiento, envíos tarde/fallidos/pendientes, alertas recientes, el estado de una fecha puntual o los componentes del flujo (SHIR, ADF, Functions, Logic Apps, RPA, Blob WORM, Power BI).';
+}
+
+let chatInitialized = false;
+function appendMessage(text, sender){
+  const box = document.getElementById('chatMessages');
+  const div = document.createElement('div');
+  div.className = 'msg ' + sender;
+  div.textContent = text;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
+function initCopiloto(){
+  if (chatInitialized) return;
+  chatInitialized = true;
+  appendMessage('¡Hola! Soy el Agente ABM de Cumplimiento SMV. Preguntame sobre el estado de los envíos, alertas o el flujo del proceso.', 'bot');
+}
+document.getElementById('chatForm').addEventListener('submit', e=>{
+  e.preventDefault();
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim();
+  if (!text) return;
+  appendMessage(text, 'user');
+  input.value = '';
+  setTimeout(()=>appendMessage(answerQuestion(text), 'bot'), 300);
+});
+document.querySelectorAll('#chatSuggestions .chip').forEach(chip=>{
+  chip.addEventListener('click', ()=>{
+    document.getElementById('chatInput').value = chip.textContent;
+    document.getElementById('chatForm').dispatchEvent(new Event('submit', { cancelable:true }));
+  });
+});
+
+/* Init */
+renderAbm();
+</script>
+</body>
+</html>
