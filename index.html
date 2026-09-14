@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Monitoreo de Cumplimiento SMV · Demo</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 <style>
   :root{
@@ -86,6 +87,7 @@
   .badge.tarde{background:var(--warn-bg);color:var(--warn);}
   .badge.fallido{background:var(--danger-bg);color:var(--danger);}
   .badge.pendiente{background:var(--pending-bg);color:var(--pending);}
+  .badge.na{background:#EEF1F6;color:var(--muted);}
 
   /* Toolbar / ABM */
   .toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;}
@@ -153,6 +155,20 @@
   .chip:hover{background:var(--ice);}
   .chat-input-row{display:flex;gap:10px;padding:16px 22px;border-top:1px solid var(--border);}
   .chat-input-row input{flex:1;}
+
+  /* Trazabilidad */
+  .timeline{margin:6px 0 4px;}
+  .tl-step{position:relative;padding-left:22px;padding-bottom:18px;border-left:2px solid var(--border);}
+  .tl-step:last-child{border-left:2px solid transparent;padding-bottom:0;}
+  .tl-step .dot{position:absolute;left:-7px;top:0;width:12px;height:12px;border-radius:50%;background:var(--muted);border:2px solid #fff;box-shadow:0 0 0 1px var(--border);}
+  .tl-step.completado .dot{background:var(--ok);}
+  .tl-step.no-completado .dot{background:var(--danger);}
+  .tl-step.en-curso .dot{background:var(--pending);}
+  .tl-step .tl-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;}
+  .tl-step .tl-paso{font-weight:600;font-size:13.5px;}
+  .tl-step .tl-hora{font-size:12px;color:var(--muted);white-space:nowrap;}
+  .tl-step .tl-meta{font-size:12.5px;color:var(--muted);margin-top:2px;}
+  .tl-step .tl-estado{display:inline-block;margin-top:6px;}
 
   @media (max-width:1100px){
     .kpis{grid-template-columns:repeat(2,1fr);}
@@ -450,7 +466,7 @@ flowchart LR
         <table>
           <thead>
             <tr>
-              <th>Fecha</th><th>Tipo de reporte</th><th>Plazo</th><th>Estado</th><th>Intentos</th><th>Constancia</th><th>Observaciones</th><th></th>
+              <th>Fecha</th><th>Tipo de reporte</th><th>Plazo</th><th>Estado</th><th>Responsable</th><th></th>Intentos</th><th>Constancia</th><th>Observaciones</th><th></th>
             </tr>
           </thead>
           <tbody id="abmBody"></tbody>
@@ -528,6 +544,17 @@ flowchart LR
         </div>
       </div>
       <div class="field">
+        <label>Persona Responsable</label>
+        <select id="fResponsable" required>
+          <option value="Ana Gómez">Ana Gómez — Analista de Datos</option>
+          <option value="Carlos Ruiz">Carlos Ruiz — Especialista de Integraciones</option>
+          <option value="Lucía Fernández">Lucía Fernández — Analista de Calidad</option>
+          <option value="Martín Paz">Martín Paz — Operador RPA</option>
+          <option value="Sofía Herrera">Sofía Herrera — Analista de Control</option>
+          <option value="Diego Torres">Diego Torres — Supervisor de Cumplimiento</option>
+        </select>
+      </div>
+      <div class="field">
         <label>Observaciones</label>
         <textarea id="fObs" rows="2" placeholder="Notas del monitoreo, causa de reintento, etc."></textarea>
       </div>
@@ -541,16 +568,73 @@ flowchart LR
 
 <div class="toast" id="toast"></div>
 
+<!-- Modal Trazabilidad -->
+<div class="overlay" id="trazaOverlay">
+  <div class="modal" style="width:520px;">
+    <h2>Trazabilidad del envío</h2>
+    <p class="modal-sub" id="trazaSub"></p>
+    <div class="timeline" id="trazaTimeline"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn secondary" id="btnCerrarTraza">Cerrar</button>
+    </div>
+  </div>
+</div>
+
 <script>
 /* ---------------------------------------------------------------
    Datos simulados — calendario de obligaciones diarias ante la SMV
    Persistencia local (localStorage) para que la demo sea editable
 ---------------------------------------------------------------- */
-const STORAGE_KEY = 'smv_envios_demo_v1';
+const STORAGE_KEY = 'smv_envios_demo_v2';
 const TIPOS = ['Pólizas', 'Siniestros', 'Reservas Técnicas'];
+const PERSONAS = [
+  { nombre: 'Ana Gómez', rol: 'Analista de Datos' },
+  { nombre: 'Carlos Ruiz', rol: 'Especialista de Integraciones' },
+  { nombre: 'Lucía Fernández', rol: 'Analista de Calidad' },
+  { nombre: 'Martín Paz', rol: 'Operador RPA' },
+  { nombre: 'Sofía Herrera', rol: 'Analista de Control' },
+  { nombre: 'Diego Torres', rol: 'Supervisor de Cumplimiento' }
+];
+const PASOS_FLUJO = [
+  'Extracción de datos (SHIR)',
+  'Generación de XML (ADF)',
+  'Validación XSD',
+  'Carga al portal SMV (RPA)',
+  'Registro de evidencia (Blob WORM)'
+];
 
 if (window.mermaid){
   mermaid.initialize({ startOnLoad: true, theme: 'base', themeVariables: { primaryColor: '#EAF3FC', primaryBorderColor: '#0078D4', lineColor: '#0078D4', fontSize: '13px' } });
+}
+if (window.Chart && window.ChartDataLabels){
+  Chart.register(ChartDataLabels);
+}
+
+function minutosAHora(m){
+  m = Math.max(0, Math.min(23*60+59, Math.round(m)));
+  const hh = String(Math.floor(m/60)).padStart(2,'0');
+  const mm = String(m%60).padStart(2,'0');
+  return `${hh}:${mm}`;
+}
+
+function buildTrazabilidad(plazo, estado, seedNum){
+  const [ph, pm] = plazo.split(':').map(Number);
+  const plazoMinutos = ph*60 + pm;
+  const inicio = Math.max(0, plazoMinutos - 4*60);
+  const retraso = estado === 'Tarde' ? 90 : 0;
+  return PASOS_FLUJO.map((paso, i) => {
+    const persona = PERSONAS[(seedNum + i) % PERSONAS.length];
+    let minutos = inicio + i*45 + (i >= 3 ? retraso : 0);
+    let estadoPaso = 'Completado';
+    let hora = minutosAHora(minutos);
+    if (estado === 'Fallido' && i === 3) estadoPaso = 'No completado';
+    if (estado === 'Fallido' && i === 4){ estadoPaso = 'No aplica'; hora = '—'; }
+    if (estado === 'Pendiente'){
+      if (i === 2){ estadoPaso = 'En curso'; }
+      else if (i > 2){ estadoPaso = 'Pendiente'; hora = '—'; }
+    }
+    return { paso, responsable: persona.nombre, rol: persona.rol, hora, estado: estadoPaso };
+  });
 }
 
 function seedData(){
@@ -560,29 +644,37 @@ function seedData(){
     const d = new Date(today);
     d.setDate(d.getDate() - i);
     const fecha = d.toISOString().slice(0,10);
-    const tipo = TIPOS[i % TIPOS.length];
+    const plazo = '18:00';
 
-    // Distribución determinística pero variada de estados
-    const r = (i * 37 + tipo.length * 13) % 100;
-    let estado, intentos, constancia;
-    if (i === 0){
-      estado = 'Pendiente'; intentos = 0; constancia = '—';
-    } else if (r < 72){
-      estado = 'A Tiempo'; intentos = 1; constancia = 'EVID-' + fecha.replace(/-/g,'') + '-' + Math.floor(1000+Math.random()*9000);
-    } else if (r < 90){
-      estado = 'Tarde'; intentos = 2 + (r % 2); constancia = 'EVID-' + fecha.replace(/-/g,'') + '-' + Math.floor(1000+Math.random()*9000);
-    } else {
-      estado = 'Fallido'; intentos = 3; constancia = '—';
-    }
+    TIPOS.forEach((tipo, tIdx) => {
+      const seedNum = i*37 + tipo.length*13 + tIdx*19;
 
-    registros.push({
-      id: crypto.randomUUID ? crypto.randomUUID() : 'id-' + fecha + '-' + tipo,
-      fecha, tipo, plazo: '18:00',
-      estado, intentos,
-      constancia,
-      obs: estado === 'Fallido' ? 'Portal SMV no disponible tras reintentos automáticos.'
-         : estado === 'Tarde' ? 'Confirmado fuera de plazo, requirió reintento.'
-         : ''
+      // Distribución determinística pero variada de estados por día y por tipo
+      const r = seedNum % 100;
+      let estado, intentos, constancia;
+      if (i === 0 && tIdx === TIPOS.length - 1){
+        estado = 'Pendiente'; intentos = 0; constancia = '—';
+      } else if (r < 66){
+        estado = 'A Tiempo'; intentos = 1; constancia = 'EVID-' + fecha.replace(/-/g,'') + '-' + (1000 + (seedNum*97 % 9000));
+      } else if (r < 88){
+        estado = 'Tarde'; intentos = 2 + (r % 2); constancia = 'EVID-' + fecha.replace(/-/g,'') + '-' + (1000 + (seedNum*53 % 9000));
+      } else {
+        estado = 'Fallido'; intentos = 3; constancia = '—';
+      }
+
+      const responsable = PERSONAS[seedNum % PERSONAS.length].nombre;
+
+      registros.push({
+        id: crypto.randomUUID ? crypto.randomUUID() : 'id-' + fecha + '-' + tipo,
+        fecha, tipo, plazo,
+        estado, intentos,
+        constancia,
+        responsable,
+        obs: estado === 'Fallido' ? 'Portal SMV no disponible tras reintentos automáticos.'
+           : estado === 'Tarde' ? 'Confirmado fuera de plazo, requirió reintento.'
+           : '',
+        trazabilidad: buildTrazabilidad(plazo, estado, seedNum)
+      });
     });
   }
   return registros;
@@ -666,10 +758,12 @@ function renderAbm(){
       <td>${r.tipo}</td>
       <td>${r.plazo}</td>
       <td>${badge(r.estado)}</td>
+      <td>${r.responsable || '—'}</td>
       <td>${r.intentos}</td>
       <td>${r.constancia}</td>
       <td style="max-width:220px;color:var(--muted);font-size:12.5px;">${r.obs || '—'}</td>
       <td style="white-space:nowrap;">
+        <button class="icon-btn" title="Detalles / Trazabilidad" data-traza="${r.id}">🔎</button>
         <button class="icon-btn" title="Editar" data-edit="${r.id}">✎</button>
         <button class="icon-btn del" title="Eliminar" data-del="${r.id}">🗑</button>
       </td>`;
@@ -677,6 +771,7 @@ function renderAbm(){
   });
   abmBody.querySelectorAll('[data-edit]').forEach(b=>b.addEventListener('click', ()=>openModal(b.dataset.edit)));
   abmBody.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click', ()=>deleteRow(b.dataset.del)));
+  abmBody.querySelectorAll('[data-traza]').forEach(b=>b.addEventListener('click', ()=>openTrazaModal(b.dataset.traza)));
 }
 
 function openModal(id){
@@ -690,6 +785,7 @@ function openModal(id){
     document.getElementById('fTipo').value = r.tipo;
     document.getElementById('fEstadoModal').value = r.estado;
     document.getElementById('fIntentos').value = r.intentos;
+    document.getElementById('fResponsable').value = r.responsable || PERSONAS[0].nombre;
     document.getElementById('fObs').value = r.obs || '';
   } else {
     formEnvio.reset();
@@ -697,6 +793,7 @@ function openModal(id){
     document.getElementById('fFecha').value = new Date().toISOString().slice(0,10);
     document.getElementById('fPlazo').value = '18:00';
     document.getElementById('fIntentos').value = 0;
+    document.getElementById('fResponsable').value = PERSONAS[0].nombre;
   }
   modalOverlay.classList.add('active');
 }
@@ -717,11 +814,13 @@ formEnvio.addEventListener('submit', e=>{
     tipo: document.getElementById('fTipo').value,
     estado,
     intentos: Number(document.getElementById('fIntentos').value || 0),
+    responsable: document.getElementById('fResponsable').value,
     constancia: (estado === 'A Tiempo' || estado === 'Tarde')
       ? ('EVID-' + document.getElementById('fFecha').value.replace(/-/g,'') + '-' + Math.floor(1000+Math.random()*9000))
       : '—',
     obs: document.getElementById('fObs').value.trim()
   };
+  record.trazabilidad = buildTrazabilidad(record.plazo, record.estado, Number(record.fecha.replace(/-/g,'')) + record.tipo.length);
 
   if (id){
     const idx = DATA.findIndex(x=>x.id === id);
@@ -752,6 +851,37 @@ document.getElementById('fSearch').addEventListener('input', renderAbm);
 document.getElementById('fEstado').addEventListener('change', renderAbm);
 
 /* ---------------------------------------------------------------
+   ===================== TRAZABILIDAD =====================
+---------------------------------------------------------------- */
+function estadoPasoBadgeClass(estado){
+  const map = { 'Completado':'ok', 'No completado':'fallido', 'En curso':'pendiente', 'Pendiente':'pendiente', 'No aplica':'na' };
+  return map[estado] || 'pendiente';
+}
+
+function openTrazaModal(id){
+  const r = DATA.find(x=>x.id === id);
+  if (!r) return;
+  document.getElementById('trazaSub').textContent = `${r.fecha} · ${r.tipo} · Responsable general: ${r.responsable || '—'}`;
+  const box = document.getElementById('trazaTimeline');
+  box.innerHTML = '';
+  (r.trazabilidad || []).forEach(step=>{
+    const cls = step.estado.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'-');
+    const div = document.createElement('div');
+    div.className = `tl-step ${cls}`;
+    div.innerHTML = `
+      <span class="dot"></span>
+      <div class="tl-head"><span class="tl-paso">${step.paso}</span><span class="tl-hora">${step.hora}</span></div>
+      <div class="tl-meta">${step.responsable} · ${step.rol}</div>
+      <span class="badge ${estadoPasoBadgeClass(step.estado)} tl-estado">${step.estado}</span>`;
+    box.appendChild(div);
+  });
+  document.getElementById('trazaOverlay').classList.add('active');
+}
+function closeTraza(){ document.getElementById('trazaOverlay').classList.remove('active'); }
+document.getElementById('btnCerrarTraza').addEventListener('click', closeTraza);
+document.getElementById('trazaOverlay').addEventListener('click', e=>{ if (e.target.id === 'trazaOverlay') closeTraza(); });
+
+/* ---------------------------------------------------------------
    ===================== DASHBOARD =====================
 ---------------------------------------------------------------- */
 let trendChart, donutChart;
@@ -770,12 +900,18 @@ function renderDashboard(){
   document.getElementById('kpi-fallidos').textContent = counts['Fallido'];
   document.getElementById('kpi-alertas').textContent = counts['Tarde'] + counts['Fallido'];
 
-  // Trend chart: stacked bar por día
-  const labels = sorted.map(r=>r.fecha.slice(5));
-  const dataOk = sorted.map(r=>r.estado==='A Tiempo'?1:0);
-  const dataTarde = sorted.map(r=>r.estado==='Tarde'?1:0);
-  const dataFallido = sorted.map(r=>r.estado==='Fallido'?1:0);
-  const dataPend = sorted.map(r=>r.estado==='Pendiente'?1:0);
+  // Trend chart: barras apiladas con la cantidad de envíos por día y estado (puede haber varios envíos por día)
+  const porFecha = {};
+  sorted.forEach(r=>{
+    if (!porFecha[r.fecha]) porFecha[r.fecha] = { 'A Tiempo':0, 'Tarde':0, 'Fallido':0, 'Pendiente':0 };
+    porFecha[r.fecha][r.estado]++;
+  });
+  const fechas = Object.keys(porFecha).sort();
+  const labels = fechas.map(f=>f.slice(5));
+  const dataOk = fechas.map(f=>porFecha[f]['A Tiempo']);
+  const dataTarde = fechas.map(f=>porFecha[f]['Tarde']);
+  const dataFallido = fechas.map(f=>porFecha[f]['Fallido']);
+  const dataPend = fechas.map(f=>porFecha[f]['Pendiente']);
 
   const ctxTrend = document.getElementById('chartTrend');
   if (trendChart) trendChart.destroy();
@@ -792,7 +928,7 @@ function renderDashboard(){
     },
     options: {
       responsive:true,
-      plugins:{ legend:{ position:'bottom', labels:{ boxWidth:10, font:{ size:11 } } } },
+      plugins:{ legend:{ position:'bottom', labels:{ boxWidth:10, font:{ size:11 } } }, datalabels:{ display:false } },
       scales:{ x:{ stacked:true, ticks:{ maxRotation:0, autoSkip:true, font:{ size:10 } } }, y:{ stacked:true, ticks:{ stepSize:1 }, grid:{ color:'#EEF1F6' } } }
     }
   });
@@ -806,7 +942,46 @@ function renderDashboard(){
       datasets: [{ data:[counts['A Tiempo'],counts['Tarde'],counts['Fallido'],counts['Pendiente']],
         backgroundColor:['#107C10','#B75A00','#C4314B','#5B5FC7'] }]
     },
-    options: { responsive:true, plugins:{ legend:{ position:'bottom', labels:{ boxWidth:10, font:{ size:11 } } } }, cutout:'62%' }
+    options: {
+      responsive:true,
+      cutout:'62%',
+      plugins:{
+        legend:{
+          position:'bottom',
+          labels:{
+            boxWidth:10, font:{ size:11 },
+            generateLabels: (chart)=>{
+              const ds = chart.data.datasets[0];
+              const total = ds.data.reduce((a,b)=>a+b,0);
+              return chart.data.labels.map((label,i)=>{
+                const pct = total ? Math.round(ds.data[i]/total*100) : 0;
+                return { text:`${label}: ${pct}%`, fillStyle:ds.backgroundColor[i], strokeStyle:ds.backgroundColor[i], index:i };
+              });
+            }
+          }
+        },
+        tooltip:{
+          callbacks:{
+            label: (ctx)=>{
+              const ds = ctx.dataset;
+              const total = ds.data.reduce((a,b)=>a+b,0);
+              const pct = total ? Math.round(ds.data[ctx.dataIndex]/total*100) : 0;
+              return `${ctx.label}: ${ds.data[ctx.dataIndex]} (${pct}%)`;
+            }
+          }
+        },
+        datalabels:{
+          color:'#fff',
+          font:{ weight:'bold', size:11 },
+          formatter: (value, ctx)=>{
+            const ds = ctx.chart.data.datasets[0];
+            const total = ds.data.reduce((a,b)=>a+b,0);
+            const pct = total ? Math.round(value/total*100) : 0;
+            return pct ? pct + '%' : '';
+          }
+        }
+      }
+    }
   });
 
   // Alertas recientes
